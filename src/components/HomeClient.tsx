@@ -44,14 +44,20 @@ function CountdownUnit({ value, label }: { value: number; label: string }) {
 
 // ─── Milestones ───────────────────────────────────────────────────────────────
 
-const MILESTONES = [
-  { label: "30 days", date: new Date("2026-06-15T00:00:00"), short: "Jun 15" },
-  { label: "14 days", date: new Date("2026-07-01T00:00:00"), short: "Jul 1"  },
-  { label: "7 days",  date: new Date("2026-07-08T00:00:00"), short: "Jul 8"  },
-  { label: "✈ Depart",date: new Date("2026-07-15T00:00:00"), short: "Jul 15" },
-];
+function buildMilestones(departureISO: string) {
+  const dep = new Date(departureISO + 'T00:00:00');
+  const fmt = (d: Date) => d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+  const offset = (days: number) => { const d = new Date(dep); d.setDate(dep.getDate() - days); return d; };
+  return [
+    { label: "30 days",  date: offset(30), short: fmt(offset(30)) },
+    { label: "14 days",  date: offset(14), short: fmt(offset(14)) },
+    { label: "7 days",   date: offset(7),  short: fmt(offset(7))  },
+    { label: "✈ Depart", date: dep,        short: fmt(dep)        },
+  ];
+}
 
-function MilestoneTimeline() {
+function MilestoneTimeline({ departureISO }: { departureISO: string }) {
+  const MILESTONES = buildMilestones(departureISO);
   const now = Date.now();
   const passedCount = MILESTONES.filter(m => now >= m.date.getTime()).length;
   const pct = (passedCount / MILESTONES.length) * 100;
@@ -378,7 +384,7 @@ export default function HomeClient({
       </div>
 
       {/* Milestones */}
-      <MilestoneTimeline />
+      <MilestoneTimeline departureISO={trip.departure} />
 
       {/* Travellers — names from Overview sheet */}
       {travellers.length > 0 && (

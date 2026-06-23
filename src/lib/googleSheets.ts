@@ -177,6 +177,59 @@ async function fetchSheet(sheetName: string): Promise<Record<string, string>[]> 
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+const MONTH_MAP: Record<string, number> = {
+  january:1,february:2,march:3,april:4,may:5,june:6,
+  july:7,august:8,september:9,october:10,november:11,december:12,
+  jan:1,feb:2,mar:3,apr:4,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12,
+};
+
+/**
+ * Parse a single natural-language date string like "November 23rd 2026"
+ * or "23 Nov 2026" or "2026-11-23" → ISO "YYYY-MM-DD", or null on failure.
+ */
+function parseNaturalDate(raw: string): string | null {
+  const s = raw.trim().replace(/(\d+)(st|nd|rd|th)/gi, '$1'); // strip ordinals
+
+  // ISO / numeric: 2026-11-23
+  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) return `${iso[1]}-${iso[2].padStart(2,'0')}-${iso[3].padStart(2,'0')}`;
+
+  // "Month Day Year"  e.g. November 23 2026
+  const mdy = s.match(/([a-z]+)\s+(\d{1,2})\s+(\d{4})/i);
+  if (mdy) {
+    const m = MONTH_MAP[mdy[1].toLowerCase()];
+    if (m) return `${mdy[3]}-${String(m).padStart(2,'0')}-${mdy[2].padStart(2,'0')}`;
+  }
+
+  // "Day Month Year"  e.g. 23 November 2026
+  const dmy = s.match(/(\d{1,2})\s+([a-z]+)\s+(\d{4})/i);
+  if (dmy) {
+    const m = MONTH_MAP[dmy[2].toLowerCase()];
+    if (m) return `${dmy[3]}-${String(m).padStart(2,'0')}-${dmy[1].padStart(2,'0')}`;
+  }
+
+  // Numeric  DD/MM/YYYY or DD-MM-YYYY
+  const num = s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (num) return `${num[3]}-${num[2].padStart(2,'0')}-${num[1].padStart(2,'0')}`;
+
+  return null;
+}
+
+/**
+ * Parse a trip-duration string like "November 23rd 2026 to December 5th 2026"
+ * → { start: "2026-11-23", end: "2026-12-05" } or null.
+ */
+function parseTripDuration(value: string): { start: string; end: string } | null {
+  // Split on " to " or " – " or " - "
+  const parts = value.split(/\s+to\s+|\s*[–\-]\s+/i);
+  if (parts.length === 2) {
+    const start = parseNaturalDate(parts[0]);
+    const end   = parseNaturalDate(parts[1]);
+    if (start && end) return { start, end };
+  }
+  return null;
+}
+
 /** Try multiple column name variants (case-insensitive, underscore forms). */
 function col(row: Record<string, string>, ...keys: string[]): string {
   for (const k of keys) {
@@ -205,17 +258,48 @@ async function _fetchOverview(): Promise<SheetTrip> {
     if (field) map[field.toLowerCase().trim()] = value;
   }
 
-  const travellers = (map['travellers'] || map['passengers'] || map['people'] || '')
+  // ── Dates ────────────────────────────────────────────────────────────────
+  // First try an explicit "Trip Duration" field: "November 23rd 2026 to December 5th 2026"
+  let departure = '';
+  let returnDate = '';
+  const durationRaw = map['trip duration'] || map['dates'] || map['trip dates'] || '';
+  if (durationRaw) {
+    const parsed = parseTripDuration(durationRaw);
+    if (parsed) { departure = parsed.start; returnDate = parsed.end; }
+  }
+  // Fall back to individual date fields (also run through natural-date parser)
+  if (!departure) {
+    const raw = map['start date'] || map['departure date'] || map['departure'] || map['start'] || '';
+    departure = parseNaturalDate(raw) ?? raw;
+  }
+  if (!returnDate) {
+    const raw = map['end date'] || map['return date'] || map['return'] || map['end'] || '';
+    returnDate = parseNaturalDate(raw) ?? raw;
+  }
+  // Hard default only if nothing was found
+  if (!departure)  departure  = '2026-11-23';
+  if (!returnDate) returnDate = '2026-12-05';
+
+  // ── Travellers ───────────────────────────────────────────────────────────
+  // Support both "Traveller 1 / 2 / 3 …" individual fields AND a single
+  // comma-separated "Travellers" field.
+  const numbered: string[] = [];
+  for (let i = 1; i <= 10; i++) {
+    const t = map[`traveller ${i}`] || map[`traveler ${i}`] || map[`passenger ${i}`] || map[`person ${i}`];
+    if (t) numbered.push(t);
+  }
+  const commaSep = (map['travellers'] || map['passengers'] || map['people'] || '')
     .split(',').map(s => s.trim()).filter(Boolean);
+  const travellers = numbered.length ? numbered : commaSep;
 
   return {
-    title:      map['trip title']   || map['title']         || 'REHAB 2026',
-    tagline:    map['tagline']      || map['subtitle']       || map['vibe'] || '',
-    departure:  map['start date']   || map['departure date'] || map['start']    || '2026-07-15',
-    return:     map['end date']     || map['return date']    || map['end']      || '2026-07-28',
+    title:      map['trip title']  || map['title']    || 'REHAB 2026',
+    tagline:    map['tagline']     || map['subtitle']  || map['vibe'] || '',
+    departure,
+    return:     returnDate,
     travellers: travellers.length ? travellers : ['Sujal'],
     traveller:  travellers[0] || 'Sujal',
-    currency:   map['currency']     || 'AUD',
+    currency:   map['currency'] || 'AUD',
   };
 }
 
