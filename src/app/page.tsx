@@ -10,6 +10,8 @@ export default async function HomePage() {
     withFallback(getSheetOverview, null),
   ]);
 
+  const source = (rawCosts || rawOverview) ? "sheet" : "mock";
+
   const prebooked = rawCosts ?? BUDGET_PREBOOKED.map(b => ({
     id:       b.id,
     label:    b.label,
@@ -21,12 +23,12 @@ export default async function HomePage() {
 
   const trip: TripMeta = rawOverview
     ? {
-        title:      rawOverview.title                       || TRIP.title,
-        tagline:    rawOverview.tagline                     || TRIP.tagline,
-        departure:  rawOverview.departure                   || TRIP.departure.toISOString().slice(0, 10),
-        returnDate: rawOverview.return                      || TRIP.return.toISOString().slice(0, 10),
-        currency:   rawOverview.currency                    || "AUD",
-        traveller:  rawOverview.travellers?.[0]             || TRIP.traveller,
+        title:      rawOverview.title                   || TRIP.title,
+        tagline:    rawOverview.tagline                 || TRIP.tagline,
+        departure:  rawOverview.departure               || TRIP.departure.toISOString().slice(0, 10),
+        returnDate: rawOverview.return                  || TRIP.return.toISOString().slice(0, 10),
+        currency:   rawOverview.currency                || "AUD",
+        traveller:  rawOverview.travellers?.[0]         || TRIP.traveller,
       }
     : {
         title:      TRIP.title,
@@ -42,6 +44,7 @@ export default async function HomePage() {
       prebooked={prebooked}
       travellers={TRAVELLERS}
       trip={trip}
+      source={source}
     />
   );
 }

@@ -382,10 +382,12 @@ export default function HomeClient({
   prebooked,
   travellers,
   trip,
+  source,
 }: {
   prebooked:  SheetCostItem[];
   travellers: Traveller[];
   trip:       TripMeta;
+  source:     "sheet" | "mock";
 }) {
   const cd        = useCountdown(trip.departure);
   const now       = Date.now();
@@ -463,6 +465,25 @@ export default function HomeClient({
             <p className="text-white text-sm font-medium font-mono">{trip.currency} → VND</p>
           </div>
         </div>
+      </div>
+
+      {/* Data source indicator */}
+      <div className={`flex items-center justify-between rounded-xl px-4 py-2 border text-xs ${
+        source === "sheet"
+          ? "bg-emerald-950/30 border-emerald-900/40 text-emerald-400"
+          : "bg-amber-950/30 border-amber-900/40 text-amber-400"
+      }`}>
+        <span>
+          {source === "sheet" ? "✓ Live data · Google Sheets" : "⚠ Mock data · Sheet unreachable"}
+        </span>
+        <a
+          href="/api/sheets-debug"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline opacity-60 hover:opacity-100 transition-opacity"
+        >
+          debug →
+        </a>
       </div>
 
       {/* Milestones */}

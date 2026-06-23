@@ -125,11 +125,37 @@ function parseCSV(text: string): Record<string, string>[] {
 /** Fetch a named sheet as parsed CSV rows. */
 async function fetchSheet(sheetName: string): Promise<Record<string, string>[]> {
   const url = csvUrl(sheetName);
-  const res = await fetch(url, { next: { revalidate: 300 } });
-  if (!res.ok) throw new Error(`Failed to fetch sheet "${sheetName}": ${res.status}`);
+
+  // cache: 'no-store' because unstable_cache handles our 5-min revalidation.
+  // Adding both would conflict and may cause stale/empty cache issues.
+  const res = await fetch(url, { cache: 'no-store' });
+
+  if (!res.ok) {
+    throw new Error(
+      `[sheets] HTTP ${res.status} fetching tab "${sheetName}". ` +
+      `URL: ${url}`
+    );
+  }
+
   const text = await res.text();
-  if (!text.trim()) throw new Error(`Sheet "${sheetName}" returned empty response`);
-  return parseCSV(text);
+
+  // Google redirects unauthenticated requests to a login HTML page
+  // instead of returning CSV — detect and surface this clearly.
+  if (text.trimStart().startsWith('<!') || text.trimStart().startsWith('<html')) {
+    throw new Error(
+      `[sheets] Got HTML instead of CSV for tab "${sheetName}". ` +
+      `The sheet may not be fully public. ` +
+      `Go to Share → Anyone with the link → Viewer, then try again.`
+    );
+  }
+
+  if (!text.trim()) {
+    throw new Error(`[sheets] Empty response for tab "${sheetName}". URL: ${url}`);
+  }
+
+  const rows = parseCSV(text);
+  console.log(`[sheets] ✓ "${sheetName}" — ${rows.length} rows, headers: [${Object.keys(rows[0] ?? {}).join(', ')}]`);
+  return rows;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -348,7 +374,13 @@ export async function withFallback<T>(fetcher: () => Promise<T>, fallback: T): P
   try {
     return await fetcher();
   } catch (err) {
-    console.warn('[googleSheets] falling back to mock data:', (err as Error).message);
+    // Log full error so it appears in Vercel Function Logs
+    console.error(
+      '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+      '[googleSheets] FALLING BACK TO MOCK DATA\n' +
+      `Reason: ${(err as Error).message}\n` +
+      '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+    );
     return fallback;
   }
 }
