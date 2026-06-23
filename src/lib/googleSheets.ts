@@ -111,7 +111,9 @@ function parseRow(line: string): string[] {
   return fields;
 }
 
-/** Parse CSV text → array of {header: value} objects. */
+/** Parse CSV text → array of {header: value} objects.
+ *  Extra values beyond the header count are stored as _col2, _col3 … so
+ *  callers can access them (e.g. "Travellers | Sujal | Lukas | Aaron"). */
 function parseCSV(text: string): Record<string, string>[] {
   const lines = splitLines(text).filter(l => l.trim());
   if (lines.length < 2) return [];
@@ -120,6 +122,11 @@ function parseCSV(text: string): Record<string, string>[] {
     const vals = parseRow(line);
     const row: Record<string, string> = {};
     headers.forEach((h, j) => { row[h] = (vals[j] ?? '').trim(); });
+    // Capture extra values (beyond header count) with synthetic keys
+    for (let j = headers.length; j < vals.length; j++) {
+      const v = vals[j].trim();
+      if (v) row[`_col${j}`] = v;
+    }
     return row;
   });
 }
@@ -281,20 +288,40 @@ async function _fetchOverview(): Promise<SheetTrip> {
   if (!returnDate) returnDate = '2026-12-05';
 
   // ── Travellers ───────────────────────────────────────────────────────────
-  // Scan ALL map keys for anything that looks like "Traveller N" / "Traveler N"
-  // (handles "Traveller 1", "Traveller1", "Traveler 2", "Traveler2" etc.)
-  // Sort numerically so the order matches the sheet, not alphabetical.
+  // Format A — individual rows: "Traveller 1 | Sujal", "Traveller 2 | Lukas" …
+  // Scan all map keys for anything matching "traveller N" / "traveler N"
+  // (handles "Traveller 1", "Traveller1", "Traveler 2", etc.)
   const numbered: string[] = Object.entries(map)
-    .filter(([k]) => /^travell?er\s*\d/i.test(k))
+    .filter(([k]) => /^travell?er\s*\d+$/i.test(k))
     .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
     .map(([, v]) => v.trim())
     .filter(Boolean);
 
-  // Fallback: a single comma-separated "Travellers" / "Passengers" / "People" field
-  const commaSep = (map['travellers'] || map['passengers'] || map['people'] || '')
+  // Format B — single row with multiple value columns:
+  // "Travellers | Sujal | Lukas | Aaron"
+  // parseCSV stores extra columns as _col2, _col3 … on the raw row.
+  // We need to find that row in the raw rows array.
+  let formatB: string[] = [];
+  const travRow = rows.find(r => {
+    const f = (col(r, 'Field') || '').toLowerCase().trim();
+    return f === 'travellers' || f === 'travelers' || f === 'passengers' || f === 'people';
+  });
+  if (travRow) {
+    // Collect ALL non-Field values from this row (Value column + any _colN extras)
+    formatB = Object.entries(travRow)
+      .filter(([k]) => k !== 'Field' && k !== 'field' && !/^_?field$/i.test(k))
+      .map(([, v]) => v.trim())
+      .filter(Boolean);
+  }
+
+  // Comma-separated fallback: "Travellers | Sujal, Lukas, Aaron"
+  const commaSep = (map['travellers'] || map['travelers'] || map['passengers'] || map['people'] || '')
     .split(',').map(s => s.trim()).filter(Boolean);
 
-  const travellers = numbered.length ? numbered : commaSep;
+  // Pick the first non-empty source
+  const travellers = numbered.length ? numbered
+    : formatB.length       ? formatB
+    : commaSep;
 
   return {
     title:      map['trip title']  || map['title']    || 'REHAB 2026',
