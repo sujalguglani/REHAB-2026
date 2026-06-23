@@ -180,6 +180,48 @@ async function fetchSheet(sheetName: string): Promise<Record<string, string>[]> 
   return rows;
 }
 
+/**
+ * Fetch a sheet and return every row as a plain string array (no header mapping).
+ * Used for sheets like Overview that have NO header row — just key/value pairs.
+ * Never throws; returns [] on any problem.
+ */
+async function fetchSheetRaw(sheetName: string): Promise<string[][]> {
+  const url = csvUrl(sheetName);
+  console.log(`[sheets] fetching raw: ${url}`);
+
+  let res: Response;
+  try {
+    res = await fetch(url, { cache: 'no-store' });
+  } catch (err) {
+    console.warn(`[sheets] Network error for "${sheetName}": ${(err as Error).message}`);
+    return [];
+  }
+
+  if (!res.ok) {
+    console.warn(`[sheets] HTTP ${res.status} for "${sheetName}" — returning []`);
+    return [];
+  }
+
+  const text = await res.text();
+
+  if (text.trimStart().startsWith('<!') || text.trimStart().startsWith('<html')) {
+    console.warn(`[sheets] Got HTML for "${sheetName}" — check sharing settings`);
+    return [];
+  }
+
+  if (!text.trim()) {
+    console.warn(`[sheets] "${sheetName}" is empty`);
+    return [];
+  }
+
+  const rows = splitLines(text)
+    .filter(l => l.trim())
+    .map(l => parseRow(l).map(v => v.trim()));
+
+  console.log(`[sheets] ✓ "${sheetName}" (raw) — ${rows.length} rows`);
+  return rows;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -257,80 +299,78 @@ function parseBool(s: string): boolean {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function _fetchOverview(): Promise<SheetTrip> {
-  const rows = await fetchSheet('Overview');
-  const map: Record<string, string> = {};
-  for (const row of rows) {
-    const field = col(row, 'Field');
-    const value = col(row, 'Value');
-    if (field) map[field.toLowerCase().trim()] = value;
+  // Use raw rows because the Overview sheet has NO header row —
+  // it is just key/value pairs: column A = field name, column B = value.
+  // Using fetchSheet() here would treat row 0 as headers, corrupting everything.
+  const rawRows = await fetchSheetRaw('Overview');
+
+  let title      = '';
+  let tagline    = '';
+  let departure  = '';
+  let returnDate = '';
+  let currency   = '';
+  const travellers: string[] = [];
+
+  for (const cells of rawRows) {
+    const field = (cells[0] ?? '').trim().toLowerCase();
+    const value = (cells[1] ?? '').trim();
+    if (!field) continue;
+
+    // ── Dates ──────────────────────────────────────────────────────────────
+    if (field === 'trip duration' || field === 'dates' || field === 'trip dates') {
+      const parsed = parseTripDuration(value);
+      if (parsed) { departure = parsed.start; returnDate = parsed.end; }
+
+    } else if (field === 'start date' || field === 'departure date' || field === 'departure' || field === 'start') {
+      if (!departure) departure = parseNaturalDate(value) ?? value;
+
+    } else if (field === 'end date' || field === 'return date' || field === 'return' || field === 'end') {
+      if (!returnDate) returnDate = parseNaturalDate(value) ?? value;
+
+    // ── Metadata ───────────────────────────────────────────────────────────
+    } else if (field === 'trip title' || field === 'title' || field === 'name') {
+      title = value;
+
+    } else if (field === 'tagline' || field === 'subtitle' || field === 'vibe' || field === 'description') {
+      tagline = value;
+
+    } else if (field === 'currency') {
+      currency = value;
+
+    // ── Travellers ─────────────────────────────────────────────────────────
+    // Format A: one traveller per row  →  "Traveller 1 | Sujal"
+    } else if (/^travell?er\s*\d+$/i.test(field)) {
+      if (value) travellers.push(value);
+
+    // Format B: all on one row  →  "Travellers | Sujal | Lukas | Aaron"
+    //           or comma-sep   →  "Travellers | Sujal, Lukas, Aaron"
+    } else if (/^travell?ers?$|^passengers?$|^people$/i.test(field)) {
+      const allCols = cells.slice(1).filter(v => v); // cols B, C, D …
+      if (allCols.length > 1) {
+        // Multiple value columns (Format B multi-column)
+        travellers.push(...allCols);
+      } else if (value.includes(',')) {
+        // Comma-separated in col B
+        travellers.push(...value.split(',').map(s => s.trim()).filter(Boolean));
+      } else if (value) {
+        travellers.push(value);
+      }
+    }
   }
 
-  // ── Dates ────────────────────────────────────────────────────────────────
-  // First try an explicit "Trip Duration" field: "November 23rd 2026 to December 5th 2026"
-  let departure = '';
-  let returnDate = '';
-  const durationRaw = map['trip duration'] || map['dates'] || map['trip dates'] || '';
-  if (durationRaw) {
-    const parsed = parseTripDuration(durationRaw);
-    if (parsed) { departure = parsed.start; returnDate = parsed.end; }
-  }
-  // Fall back to individual date fields (also run through natural-date parser)
-  if (!departure) {
-    const raw = map['start date'] || map['departure date'] || map['departure'] || map['start'] || '';
-    departure = parseNaturalDate(raw) ?? raw;
-  }
-  if (!returnDate) {
-    const raw = map['end date'] || map['return date'] || map['return'] || map['end'] || '';
-    returnDate = parseNaturalDate(raw) ?? raw;
-  }
-  // Hard default only if nothing was found
   if (!departure)  departure  = '2026-11-23';
   if (!returnDate) returnDate = '2026-12-05';
 
-  // ── Travellers ───────────────────────────────────────────────────────────
-  // Format A — individual rows: "Traveller 1 | Sujal", "Traveller 2 | Lukas" …
-  // Scan all map keys for anything matching "traveller N" / "traveler N"
-  // (handles "Traveller 1", "Traveller1", "Traveler 2", etc.)
-  const numbered: string[] = Object.entries(map)
-    .filter(([k]) => /^travell?er\s*\d+$/i.test(k))
-    .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
-    .map(([, v]) => v.trim())
-    .filter(Boolean);
-
-  // Format B — single row with multiple value columns:
-  // "Travellers | Sujal | Lukas | Aaron"
-  // parseCSV stores extra columns as _col2, _col3 … on the raw row.
-  // We need to find that row in the raw rows array.
-  let formatB: string[] = [];
-  const travRow = rows.find(r => {
-    const f = (col(r, 'Field') || '').toLowerCase().trim();
-    return f === 'travellers' || f === 'travelers' || f === 'passengers' || f === 'people';
-  });
-  if (travRow) {
-    // Collect ALL non-Field values from this row (Value column + any _colN extras)
-    formatB = Object.entries(travRow)
-      .filter(([k]) => k !== 'Field' && k !== 'field' && !/^_?field$/i.test(k))
-      .map(([, v]) => v.trim())
-      .filter(Boolean);
-  }
-
-  // Comma-separated fallback: "Travellers | Sujal, Lukas, Aaron"
-  const commaSep = (map['travellers'] || map['travelers'] || map['passengers'] || map['people'] || '')
-    .split(',').map(s => s.trim()).filter(Boolean);
-
-  // Pick the first non-empty source
-  const travellers = numbered.length ? numbered
-    : formatB.length       ? formatB
-    : commaSep;
+  console.log(`[sheets] Overview → departure=${departure} return=${returnDate} travellers=[${travellers.join(', ')}]`);
 
   return {
-    title:      map['trip title']  || map['title']    || 'REHAB 2026',
-    tagline:    map['tagline']     || map['subtitle']  || map['vibe'] || '',
+    title:      title    || 'REHAB 2026',
+    tagline:    tagline  || '',
     departure,
     return:     returnDate,
     travellers: travellers.length ? travellers : ['Sujal'],
-    traveller:  travellers[0] || 'Sujal',
-    currency:   map['currency'] || 'AUD',
+    traveller:  travellers[0]     || 'Sujal',
+    currency:   currency || 'AUD',
   };
 }
 
