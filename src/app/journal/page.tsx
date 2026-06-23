@@ -1,7 +1,7 @@
 import { getAllItineraryDays } from "@/lib/googleSheets";
 import JournalClient from "./client";
 
-export const revalidate = 300;
+export const dynamic = 'force-dynamic';
 
 export default async function JournalPage() {
   const days = await getAllItineraryDays();

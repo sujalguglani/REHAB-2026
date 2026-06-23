@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getAllItineraryDays } from "@/lib/googleSheets";
 
-export const revalidate = 300;
+export const dynamic = 'force-dynamic';
 
 const CITY_COLORS: Record<string, string> = {
   "Ho Chi Minh":      "text-red-400",

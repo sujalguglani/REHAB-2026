@@ -1,7 +1,7 @@
 import { getSheetCosts, getSheetOverview } from "@/lib/googleSheets";
 import HomeClient, { type TripMeta } from "@/components/HomeClient";
 
-export const revalidate = 300;
+export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
   // Both calls throw on failure — no mock fallback.

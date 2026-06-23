@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { getAllItineraryDays, getSheetOverview } from "@/lib/googleSheets";
 import TodayClient from "./client";
 
-export const revalidate = 300;
+export const dynamic = 'force-dynamic';
 
 async function TodayServer() {
   const [days, overview] = await Promise.all([

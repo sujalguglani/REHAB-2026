@@ -124,42 +124,52 @@ function parseCSV(text: string): Record<string, string>[] {
   });
 }
 
-/** Fetch a named sheet as parsed CSV rows. */
+/** Fetch a named sheet as parsed CSV rows. Never throws — returns [] on any problem. */
 async function fetchSheet(sheetName: string): Promise<Record<string, string>[]> {
   const url = csvUrl(sheetName);
-
-  // Log the exact URL so you can verify it in Vercel Function Logs or locally.
   console.log(`[sheets] fetching: ${url}`);
 
-  // cache: 'no-store' because unstable_cache handles our 5-min revalidation.
-  // Adding both would conflict and may cause stale/empty cache issues.
-  const res = await fetch(url, { cache: 'no-store' });
+  let res: Response;
+  try {
+    // cache: 'no-store' because unstable_cache handles our 5-min revalidation.
+    res = await fetch(url, { cache: 'no-store' });
+  } catch (err) {
+    console.warn(`[sheets] Network error for "${sheetName}": ${(err as Error).message} — returning []`);
+    return [];
+  }
 
   if (!res.ok) {
-    throw new Error(
-      `[sheets] HTTP ${res.status} fetching tab "${sheetName}". ` +
-      `URL: ${url}`
-    );
+    console.warn(`[sheets] HTTP ${res.status} for "${sheetName}" — returning []`);
+    return [];
   }
 
   const text = await res.text();
 
   // Google redirects unauthenticated requests to a login HTML page
-  // instead of returning CSV — detect and surface this clearly.
+  // instead of returning CSV — detect and warn clearly.
   if (text.trimStart().startsWith('<!') || text.trimStart().startsWith('<html')) {
-    throw new Error(
-      `[sheets] Got HTML instead of CSV for tab "${sheetName}". ` +
-      `The sheet may not be fully public. ` +
-      `Go to Share → Anyone with the link → Viewer, then try again.`
+    console.warn(
+      `[sheets] Got HTML instead of CSV for "${sheetName}". ` +
+      `Check Share → Anyone with the link → Viewer. — returning []`
     );
+    return [];
   }
 
+  // Empty body or header-only (no data rows) — valid, not an error.
   if (!text.trim()) {
-    throw new Error(`[sheets] Empty response for tab "${sheetName}". URL: ${url}`);
+    console.warn(`[sheets] "${sheetName}" is empty — returning []`);
+    return [];
   }
 
   const rows = parseCSV(text);
-  console.log(`[sheets] ✓ "${sheetName}" — ${rows.length} rows, headers: [${Object.keys(rows[0] ?? {}).join(', ')}]`);
+
+  // parseCSV returns [] when there are 0 data rows (header-only sheet)
+  if (rows.length === 0) {
+    console.warn(`[sheets] "${sheetName}" has headers but no data rows — returning []`);
+    return [];
+  }
+
+  console.log(`[sheets] ✓ "${sheetName}" — ${rows.length} rows, headers: [${Object.keys(rows[0]).join(', ')}]`);
   return rows;
 }
 
