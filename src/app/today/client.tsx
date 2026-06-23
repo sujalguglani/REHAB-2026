@@ -41,11 +41,9 @@ function getDefaultDayIndex(days: TripDay[], departureISO: string): number {
 export default function TodayClient({
   days,
   departureISO,
-  source,
 }: {
   days: TripDay[];
   departureISO: string;
-  source: "sheet" | "mock";
 }) {
   const searchParams   = useSearchParams();
   const router         = useRouter();
@@ -58,8 +56,7 @@ export default function TodayClient({
   if (!day) {
     return (
       <div className="px-4 pt-6 text-zinc-500 text-sm">
-        No itinerary data found.{" "}
-        {source === "mock" && "Check your Google Sheet connection."}
+        No itinerary data found. Check your Google Sheet tabs.
       </div>
     );
   }
@@ -87,12 +84,6 @@ export default function TodayClient({
         </Link>
       </div>
 
-      {/* Fallback badge */}
-      {source === "mock" && (
-        <div className="bg-amber-950/40 border border-amber-900/40 rounded-xl px-4 py-2 text-amber-400 text-xs">
-          ⚠️ Showing placeholder data — sheet unavailable
-        </div>
-      )}
 
       {/* City banner */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-5 py-4">

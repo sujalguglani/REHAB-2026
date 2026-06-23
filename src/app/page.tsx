@@ -1,50 +1,29 @@
-import { getSheetCosts, getSheetOverview, withFallback } from "@/lib/googleSheets";
-import { BUDGET_PREBOOKED, TRAVELLERS, TRIP } from "@/lib/data";
+import { getSheetCosts, getSheetOverview } from "@/lib/googleSheets";
 import HomeClient, { type TripMeta } from "@/components/HomeClient";
 
 export const revalidate = 300;
 
 export default async function HomePage() {
-  const [rawCosts, rawOverview] = await Promise.all([
-    withFallback(getSheetCosts, null),
-    withFallback(getSheetOverview, null),
+  // Both calls throw on failure — no mock fallback.
+  const [overview, costs] = await Promise.all([
+    getSheetOverview(),
+    getSheetCosts(),
   ]);
 
-  const source = (rawCosts || rawOverview) ? "sheet" : "mock";
-
-  const prebooked = rawCosts ?? BUDGET_PREBOOKED.map(b => ({
-    id:       b.id,
-    label:    b.label,
-    category: b.category,
-    amount:   b.amount,
-    paid:     b.paid,
-    notes:    "",
-  }));
-
-  const trip: TripMeta = rawOverview
-    ? {
-        title:      rawOverview.title                   || TRIP.title,
-        tagline:    rawOverview.tagline                 || TRIP.tagline,
-        departure:  rawOverview.departure               || TRIP.departure.toISOString().slice(0, 10),
-        returnDate: rawOverview.return                  || TRIP.return.toISOString().slice(0, 10),
-        currency:   rawOverview.currency                || "AUD",
-        traveller:  rawOverview.travellers?.[0]         || TRIP.traveller,
-      }
-    : {
-        title:      TRIP.title,
-        tagline:    TRIP.tagline,
-        departure:  TRIP.departure.toISOString().slice(0, 10),
-        returnDate: TRIP.return.toISOString().slice(0, 10),
-        currency:   "AUD",
-        traveller:  TRIP.traveller,
-      };
+  const trip: TripMeta = {
+    title:      overview.title,
+    tagline:    overview.tagline,
+    departure:  overview.departure,
+    returnDate: overview.return,
+    currency:   overview.currency,
+    traveller:  overview.traveller,
+  };
 
   return (
     <HomeClient
-      prebooked={prebooked}
-      travellers={TRAVELLERS}
+      prebooked={costs}
+      travellers={overview.travellers}
       trip={trip}
-      source={source}
     />
   );
 }

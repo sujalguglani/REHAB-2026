@@ -17,10 +17,8 @@ const CAT_STYLES: Record<string, string> = {
 
 export default function QuestsClient({
   quests,
-  source,
 }: {
   quests: SheetQuest[];
-  source: "sheet" | "mock";
 }) {
   const [completed, setCompleted] = useState<string[]>([]);
   const [filter, setFilter]       = useState("All");
@@ -66,13 +64,6 @@ export default function QuestsClient({
           ← Home
         </Link>
       </div>
-
-      {/* Source badge */}
-      {source === "mock" && (
-        <div className="bg-amber-950/40 border border-amber-900/40 rounded-xl px-4 py-2 text-amber-400 text-xs">
-          ⚠️ Showing placeholder data — sheet unavailable
-        </div>
-      )}
 
       {/* Progress */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-5 py-4">

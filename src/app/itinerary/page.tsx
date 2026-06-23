@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { getAllItineraryDays, withFallback } from "@/lib/googleSheets";
-import { DAYS } from "@/lib/data";
+import { getAllItineraryDays } from "@/lib/googleSheets";
 
 export const revalidate = 300;
 
@@ -21,11 +20,7 @@ function cityColor(city: string): string {
 }
 
 export default async function ItineraryPage() {
-  const sheetDays = await withFallback(getAllItineraryDays, null);
-  const days      = sheetDays ?? DAYS;
-  const source    = sheetDays ? "sheet" : "mock";
-
-  // Unique cities in order for the legend
+  const days   = await getAllItineraryDays();
   const cities = Array.from(new Set(days.map(d => d.city)));
 
   return (
@@ -45,13 +40,6 @@ export default async function ItineraryPage() {
           ← Home
         </Link>
       </div>
-
-      {/* Source badge */}
-      {source === "mock" && (
-        <div className="bg-amber-950/40 border border-amber-900/40 rounded-xl px-4 py-2 text-amber-400 text-xs">
-          ⚠️ Showing placeholder data — sheet unavailable
-        </div>
-      )}
 
       {/* City legend */}
       <div className="flex flex-wrap gap-2">
