@@ -9,7 +9,7 @@
 
 import { NextResponse } from 'next/server';
 
-const SPREADSHEET_ID = '1OYe9_luiqwWdR5vBZnpMc0Ls9uR3tyIvblkyIx0eIvs';
+const SPREADSHEET_ID = '1OYe9_IuiqwWdR5vBZnpMc0Ls9uR3tyIvbIkyIx0eIvs';
 const SHEETS = ['Overview', 'Cost', 'Ho Chi Minh', 'Hong Kong', 'Macau', 'Side Quests'];
 
 function csvUrl(sheetName: string) {

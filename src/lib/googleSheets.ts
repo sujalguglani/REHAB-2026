@@ -54,7 +54,9 @@ export type SheetQuest = {
 // CSV fetching + parsing
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SPREADSHEET_ID = '1OYe9_luiqwWdR5vBZnpMc0Ls9uR3tyIvblkyIx0eIvs';
+// ⚠ If this still fails: open your sheet in Chrome, copy the full URL,
+// and paste ONLY the segment between /d/ and /edit into SPREADSHEET_ID below.
+const SPREADSHEET_ID = '1OYe9_IuiqwWdR5vBZnpMc0Ls9uR3tyIvbIkyIx0eIvs';
 
 function csvUrl(sheetName: string): string {
   return (
@@ -125,6 +127,9 @@ function parseCSV(text: string): Record<string, string>[] {
 /** Fetch a named sheet as parsed CSV rows. */
 async function fetchSheet(sheetName: string): Promise<Record<string, string>[]> {
   const url = csvUrl(sheetName);
+
+  // Log the exact URL so you can verify it in Vercel Function Logs or locally.
+  console.log(`[sheets] fetching: ${url}`);
 
   // cache: 'no-store' because unstable_cache handles our 5-min revalidation.
   // Adding both would conflict and may cause stale/empty cache issues.
