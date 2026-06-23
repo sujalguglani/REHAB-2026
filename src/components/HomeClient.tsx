@@ -374,7 +374,11 @@ export default function HomeClient({
         <div className="border-t border-zinc-800 px-5 py-3 flex items-center justify-between">
           <div>
             <p className="text-[10px] text-zinc-500 uppercase tracking-wide">Passengers</p>
-            <p className="text-white text-sm font-medium">{trip.traveller}{travellers.length > 1 ? ` + ${travellers.length - 1} mates` : ""}</p>
+            <p className="text-white text-sm font-medium">
+              {travellers.length <= 2
+                ? travellers.join(' & ')
+                : `${travellers.slice(0, -1).join(', ')} & ${travellers[travellers.length - 1]}`}
+            </p>
           </div>
           <div className="text-right">
             <p className="text-[10px] text-zinc-500 uppercase tracking-wide">Currency</p>

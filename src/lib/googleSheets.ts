@@ -281,15 +281,19 @@ async function _fetchOverview(): Promise<SheetTrip> {
   if (!returnDate) returnDate = '2026-12-05';
 
   // ── Travellers ───────────────────────────────────────────────────────────
-  // Support both "Traveller 1 / 2 / 3 …" individual fields AND a single
-  // comma-separated "Travellers" field.
-  const numbered: string[] = [];
-  for (let i = 1; i <= 10; i++) {
-    const t = map[`traveller ${i}`] || map[`traveler ${i}`] || map[`passenger ${i}`] || map[`person ${i}`];
-    if (t) numbered.push(t);
-  }
+  // Scan ALL map keys for anything that looks like "Traveller N" / "Traveler N"
+  // (handles "Traveller 1", "Traveller1", "Traveler 2", "Traveler2" etc.)
+  // Sort numerically so the order matches the sheet, not alphabetical.
+  const numbered: string[] = Object.entries(map)
+    .filter(([k]) => /^travell?er\s*\d/i.test(k))
+    .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+    .map(([, v]) => v.trim())
+    .filter(Boolean);
+
+  // Fallback: a single comma-separated "Travellers" / "Passengers" / "People" field
   const commaSep = (map['travellers'] || map['passengers'] || map['people'] || '')
     .split(',').map(s => s.trim()).filter(Boolean);
+
   const travellers = numbered.length ? numbered : commaSep;
 
   return {
